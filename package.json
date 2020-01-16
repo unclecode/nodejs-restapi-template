@@ -23,7 +23,9 @@
     "moment": "^2.24.0",
     "mongoose": "^5.7.6",
     "morgan": "~1.9.0",
-    "nodemailer": "^6.3.1"
+    "mustache-express": "^1.3.0",
+    "nodemailer": "^6.3.1",
+    "nodeman": "^1.1.2"
   },
   "devDependencies": {
     "chai": "^4.2.0",
