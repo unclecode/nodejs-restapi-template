@@ -1,5 +1,5 @@
 const Book = require("../models/BookModel");
-const { body, validationResult } = require("express-validator");
+const { body, param, validationResult } = require("express-validator");
 const { sanitizeBody } = require("express-validator");
 const apiResponse = require("../helpers/apiResponse");
 const auth = require("../middlewares/jwt");
@@ -47,9 +47,17 @@ exports.bookList = [
  */
 exports.bookDetail = [
 	auth,
+	param("id").isLength({ min: 1 }).trim(),
+	param("id").custom((value, { req }) => {
+		if (!mongoose.Types.ObjectId.isValid(value)) {
+			return Promise.reject("Book ID is not a valid ObjectId");
+		}
+		return true
+	}),
 	function (req, res) {
-		if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-			return apiResponse.successResponseWithData(res, "Operation success", {});
+		const errors = validationResult(req);
+		if (!errors.isEmpty()) {
+			return apiResponse.validationErrorWithData(res, "Validation Error.", errors.array());
 		}
 		try {
 			Book.findOne({ _id: req.params.id, user: req.user._id }, "_id title description isbn createdAt").then((book) => {
@@ -138,7 +146,7 @@ exports.bookUpdate = [
 		});
 	}),
 	sanitizeBody("*").escape(),
-	(req, res) => {
+	async (req, res) => {
 		try {
 			const errors = validationResult(req);
 			var book = new Book(
@@ -152,32 +160,33 @@ exports.bookUpdate = [
 			if (!errors.isEmpty()) {
 				return apiResponse.validationErrorWithData(res, "Validation Error.", errors.array());
 			}
-			else {
-				if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-					return apiResponse.validationErrorWithData(res, "Invalid Error.", "Invalid ID");
+			if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+				return apiResponse.validationErrorWithData(res, "Invalid Error.", "Invalid ID");
+			} else {
+				const foundBook = await Book.findById(req.params.id).exec()
+				if (foundBook === null) {
+					return apiResponse.notFoundResponse(res, "Book not exists with this id");
 				} else {
-					Book.findById(req.params.id, function (err, foundBook) {
-						if (foundBook === null) {
-							return apiResponse.notFoundResponse(res, "Book not exists with this id");
-						} else {
-							//Check authorized user
-							if (foundBook.user.toString() !== req.user._id) {
-								return apiResponse.unauthorizedResponse(res, "You are not authorized to do this operation.");
+					//Check authorized user
+					if (foundBook.user.toString() !== req.user._id) {
+						return apiResponse.unauthorizedResponse(res, "You are not authorized to do this operation.");
+					} else {
+						//update book.
+						Book.findByIdAndUpdate(req.params.id, book, {}, function (err) {
+							if (err) {
+								return apiResponse.ErrorResponse(res, err);
 							} else {
-								//update book.
-								Book.findByIdAndUpdate(req.params.id, book, {}, function (err) {
-									if (err) {
-										return apiResponse.ErrorResponse(res, err);
-									} else {
-										let bookData = new BookData(book);
-										return apiResponse.successResponseWithData(res, "Book update Success.", bookData);
-									}
-								});
+								let bookData = new BookData(book);
+								return apiResponse.successResponseWithData(res, "Book update Success.", bookData);
 							}
-						}
-					});
+						});
+					}
 				}
+				// Book.findById(req.params.id, function (err, foundBook) {
+				// });
 			}
+
+
 		} catch (err) {
 			//throw error in json response with status 500. 
 			return apiResponse.ErrorResponse(res, err);
@@ -194,30 +203,31 @@ exports.bookUpdate = [
  */
 exports.bookDelete = [
 	auth,
-	function (req, res) {
+	async (req, res) => {
 		if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
 			return apiResponse.validationErrorWithData(res, "Invalid Error.", "Invalid ID");
 		}
 		try {
-			Book.findById(req.params.id, function (err, foundBook) {
-				if (foundBook === null) {
-					return apiResponse.notFoundResponse(res, "Book not exists with this id");
+			const foundBook = await Book.findById(req.params.id).exec()
+			if (foundBook === null) {
+				return apiResponse.notFoundResponse(res, "Book not exists with this id");
+			} else {
+				//Check authorized user
+				if (foundBook.user.toString() !== req.user._id) {
+					return apiResponse.unauthorizedResponse(res, "You are not authorized to do this operation.");
 				} else {
-					//Check authorized user
-					if (foundBook.user.toString() !== req.user._id) {
-						return apiResponse.unauthorizedResponse(res, "You are not authorized to do this operation.");
-					} else {
-						//delete book.
-						Book.findByIdAndRemove(req.params.id, function (err) {
-							if (err) {
-								return apiResponse.ErrorResponse(res, err);
-							} else {
-								return apiResponse.successResponse(res, "Book delete Success.");
-							}
-						});
-					}
+					//delete book.
+					Book.findByIdAndRemove(req.params.id, function (err) {
+						if (err) {
+							return apiResponse.ErrorResponse(res, err);
+						} else {
+							return apiResponse.successResponse(res, "Book delete Success.");
+						}
+					});
 				}
-			});
+			}
+			// Book.findById(req.params.id, function (err, foundBook) {
+			// });
 		} catch (err) {
 			//throw error in json response with status 500. 
 			return apiResponse.ErrorResponse(res, err);
